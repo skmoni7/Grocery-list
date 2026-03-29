@@ -15,6 +15,7 @@
     "@react-navigation/elements": "^2.9.10",
     "@react-navigation/native": "^7.1.33",
     "expo": "55.0.10-canary-20260328-bdc6273",
+    "expo-auth-session": "55.0.11-canary-20260328-bdc6273",
     "expo-constants": "55.0.10-canary-20260328-bdc6273",
     "expo-device": "55.0.11-canary-20260328-bdc6273",
     "expo-font": "55.0.5-canary-20260328-bdc6273",
