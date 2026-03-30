@@ -1,19 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  StyleSheet, Text, View, TextInput,
-  TouchableOpacity, FlatList, SafeAreaView
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  SafeAreaView,
+  Platform,
+  Alert,
 } from 'react-native';
 import {
-  collection, addDoc, onSnapshot,
-  updateDoc, deleteDoc, doc
+  collection,
+  addDoc,
+  onSnapshot,
+  updateDoc,
+  deleteDoc,
+  doc,
+  QueryDocumentSnapshot,
+  DocumentData,
 } from 'firebase/firestore';
 import {
-  getAuth, signInWithPopup, GoogleAuthProvider,
-  signOut, onAuthStateChanged, User,
+  getAuth,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  onAuthStateChanged,
+  User,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   updateProfile,
-  signInAnonymously
+  signInAnonymously,
 } from 'firebase/auth';
 import { db } from '../../firebaseConfig';
 
@@ -25,9 +42,29 @@ type GroceryItem = {
   name: string;
   checked: boolean;
   addedBy: string;
+  category: string;
 };
 
 type Screen = 'login' | 'register';
+
+const CATEGORY_RULES: { category: string; keywords: string[] }[] = [
+  { category: 'Produce', keywords: ['apple', 'banana', 'orange', 'grape', 'spinach', 'lettuce', 'tomato', 'onion', 'potato', 'carrot', 'pepper', 'broccoli', 'cucumber', 'lime', 'lemon'] },
+  { category: 'Dairy', keywords: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'egg', 'eggs', 'sour cream', 'cottage cheese'] },
+  { category: 'Meat', keywords: ['chicken', 'beef', 'pork', 'turkey', 'fish', 'salmon', 'shrimp', 'bacon', 'ham', 'steak', 'sausage'] },
+  { category: 'Bakery', keywords: ['bread', 'bagel', 'bun', 'muffin', 'croissant', 'cake', 'donut', 'tortilla', 'roll'] },
+  { category: 'Frozen', keywords: ['frozen', 'ice cream', 'pizza', 'waffle', 'fries', 'nugget', 'ice'] },
+  { category: 'Drinks', keywords: ['water', 'soda', 'juice', 'coffee', 'tea', 'milkshake', 'energy drink', 'sports drink'] },
+  { category: 'Pantry', keywords: ['rice', 'pasta', 'beans', 'cereal', 'flour', 'sugar', 'salt', 'oil', 'sauce', 'spaghetti', 'flour', 'oats'] },
+  { category: 'Household', keywords: ['soap', 'paper towel', 'tissue', 'detergent', 'toilet paper', 'trash bag', 'cleaner', 'sponge'] },
+];
+
+function detectCategory(name: string) {
+  const value = name.toLowerCase().trim();
+  for (const rule of CATEGORY_RULES) {
+    if (rule.keywords.some(k => value.includes(k))) return rule.category;
+  }
+  return 'Other';
+}
 
 export default function App() {
   const [items, setItems] = useState<GroceryItem[]>([]);
@@ -42,25 +79,42 @@ export default function App() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    const unsub = onAuthStateChanged(auth, u => setUser(u));
     return unsub;
   }, []);
 
   useEffect(() => {
     if (!user) return;
     const unsub = onSnapshot(collection(db, 'groceries'), snapshot => {
-      setItems(snapshot.docs.map(d => ({
-        id: d.id,
-        name: d.data().name,
-        checked: d.data().checked,
-        addedBy: d.data().addedBy
-      })));
+      setItems(
+        snapshot.docs.map((d: QueryDocumentSnapshot<DocumentData>) => ({
+          id: d.id,
+          name: String(d.data().name ?? ''),
+          checked: Boolean(d.data().checked),
+          addedBy: String(d.data().addedBy ?? ''),
+          category: String(d.data().category ?? 'Other'),
+        }))
+      );
     });
     return unsub;
   }, [user]);
 
+  const groupedItems = useMemo(() => {
+    const groups: Record<string, GroceryItem[]> = {};
+    for (const item of items) {
+      if (!groups[item.category]) groups[item.category] = [];
+      groups[item.category].push(item);
+    }
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [items]);
+
   const signInGoogle = async () => {
     try {
+      setError('');
+      if (Platform.OS !== 'web') {
+        Alert.alert('Google sign-in', 'Google popup login is enabled for web. Use the web app or a native auth flow.');
+        return;
+      }
       await signInWithPopup(auth, provider);
     } catch (e: any) {
       setError(e.message);
@@ -70,8 +124,8 @@ export default function App() {
   const signInEmail = async () => {
     try {
       setError('');
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (e: any) {
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+    } catch {
       setError('Invalid email or password');
     }
   };
@@ -79,9 +133,12 @@ export default function App() {
   const registerUser = async () => {
     try {
       setError('');
-      if (!username.trim()) { setError('Please enter a username'); return; }
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(result.user, { displayName: username });
+      if (!username.trim()) {
+        setError('Please enter a username');
+        return;
+      }
+      const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await updateProfile(result.user, { displayName: username.trim() });
     } catch (e: any) {
       if (e.code === 'auth/email-already-in-use') setError('Email already registered');
       else if (e.code === 'auth/weak-password') setError('Password must be 6+ characters');
@@ -92,9 +149,12 @@ export default function App() {
   const signInGuest = async () => {
     try {
       setError('');
-      if (!guestName.trim()) { setError('Please enter your name'); return; }
+      if (!guestName.trim()) {
+        setError('Please enter your name');
+        return;
+      }
       const result = await signInAnonymously(auth);
-      await updateProfile(result.user, { displayName: guestName });
+      await updateProfile(result.user, { displayName: guestName.trim() });
     } catch (e: any) {
       setError(e.message);
     }
@@ -105,11 +165,13 @@ export default function App() {
   };
 
   const addItem = async () => {
-    if (text.trim() === '' || !user) return;
+    if (!text.trim() || !user) return;
+    const category = detectCategory(text);
     await addDoc(collection(db, 'groceries'), {
       name: text.trim(),
       checked: false,
-      addedBy: user.displayName || 'Guest'
+      addedBy: user.displayName || user.email || 'Guest',
+      category,
     });
     setText('');
   };
@@ -125,52 +187,39 @@ export default function App() {
   if (!user) {
     return (
       <SafeAreaView style={styles.loginContainer}>
-        <Text style={styles.title}>🛒 Grocery List</Text>
+        <Text style={styles.title}>Grocery List</Text>
 
         {screen === 'login' ? (
           <View style={styles.form}>
             <Text style={styles.formTitle}>Sign In</Text>
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <TextInput
-              style={styles.formInput}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <TextInput
-              style={styles.formInput}
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            <TextInput style={styles.formInput} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+            <TextInput style={styles.formInput} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
             <TouchableOpacity style={styles.primaryBtn} onPress={signInEmail}>
               <Text style={styles.primaryBtnText}>Sign In</Text>
             </TouchableOpacity>
+
             <Text style={styles.orText}>— or —</Text>
+
             <TouchableOpacity style={styles.googleBtn} onPress={signInGoogle}>
-              <Text style={styles.googleBtnText}>🔑 Sign in with Google</Text>
+              <Text style={styles.googleBtnText}>Sign in with Google</Text>
             </TouchableOpacity>
+
             <Text style={styles.orText}>— or —</Text>
+
             {!showGuestInput ? (
               <TouchableOpacity style={styles.guestBtn} onPress={() => setShowGuestInput(true)}>
-                <Text style={styles.guestBtnText}>👤 Continue as Guest</Text>
+                <Text style={styles.guestBtnText}>Continue as Guest</Text>
               </TouchableOpacity>
             ) : (
               <View>
-                <TextInput
-                  style={styles.formInput}
-                  placeholder="Enter your name"
-                  value={guestName}
-                  onChangeText={setGuestName}
-                />
+                <TextInput style={styles.formInput} placeholder="Enter your name" value={guestName} onChangeText={setGuestName} />
                 <TouchableOpacity style={styles.guestBtn} onPress={signInGuest}>
-                  <Text style={styles.guestBtnText}>👤 Join as Guest</Text>
+                  <Text style={styles.guestBtnText}>Join as Guest</Text>
                 </TouchableOpacity>
               </View>
             )}
+
             <TouchableOpacity onPress={() => { setScreen('register'); setError(''); }}>
               <Text style={styles.switchText}>No account? Create one</Text>
             </TouchableOpacity>
@@ -179,27 +228,9 @@ export default function App() {
           <View style={styles.form}>
             <Text style={styles.formTitle}>Create Account</Text>
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <TextInput
-              style={styles.formInput}
-              placeholder="Username"
-              value={username}
-              onChangeText={setUsername}
-            />
-            <TextInput
-              style={styles.formInput}
-              placeholder="Email"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <TextInput
-              style={styles.formInput}
-              placeholder="Password (6+ characters)"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            <TextInput style={styles.formInput} placeholder="Username" value={username} onChangeText={setUsername} />
+            <TextInput style={styles.formInput} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
+            <TextInput style={styles.formInput} placeholder="Password (6+ characters)" value={password} onChangeText={setPassword} secureTextEntry />
             <TouchableOpacity style={styles.primaryBtn} onPress={registerUser}>
               <Text style={styles.primaryBtnText}>Create Account</Text>
             </TouchableOpacity>
@@ -215,42 +246,48 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>🛒 Grocery List</Text>
+        <Text style={styles.title}>Grocery List</Text>
         <TouchableOpacity onPress={signOutUser}>
           <Text style={styles.signOut}>Sign out</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.welcome}>
-        👋 {user.displayName || 'Guest'} {user.isAnonymous ? '(Guest)' : ''}
-      </Text>
+
+      <Text style={styles.welcome}>Hi, {user.displayName || 'Guest'}</Text>
+
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
           placeholder="Add an item..."
           value={text}
           onChangeText={setText}
+          onSubmitEditing={addItem}
+          returnKeyType="done"
         />
         <TouchableOpacity style={styles.addBtn} onPress={addItem}>
           <Text style={styles.addBtnText}>Add</Text>
         </TouchableOpacity>
       </View>
+
       <FlatList
-        data={items}
-        keyExtractor={(i: GroceryItem) => i.id}
-        renderItem={({ item }: { item: GroceryItem }) => (
-          <View style={styles.itemRow}>
-            <TouchableOpacity onPress={() => toggleItem(item)} style={styles.itemLeft}>
-              <Text style={styles.checkbox}>{item.checked ? '✅' : '⬜'}</Text>
-              <View>
-                <Text style={[styles.itemText, item.checked && styles.checked]}>
-                  {item.name}
-                </Text>
-                <Text style={styles.addedBy}>Added by {item.addedBy}</Text>
+        data={groupedItems}
+        keyExtractor={([category]) => category}
+        renderItem={({ item: [category, categoryItems] }) => (
+          <View style={styles.categoryBlock}>
+            <Text style={styles.categoryTitle}>{category}</Text>
+            {categoryItems.map(item => (
+              <View key={item.id} style={styles.itemRow}>
+                <TouchableOpacity onPress={() => toggleItem(item)} style={styles.itemLeft}>
+                  <Text style={styles.checkbox}>{item.checked ? '✅' : '⬜'}</Text>
+                  <View>
+                    <Text style={[styles.itemText, item.checked && styles.checked]}>{item.name}</Text>
+                    <Text style={styles.addedBy}>Added by {item.addedBy}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => deleteItem(item.id)}>
+                  <Text style={styles.delete}>🗑️</Text>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => deleteItem(item.id)}>
-              <Text style={styles.delete}>🗑️</Text>
-            </TouchableOpacity>
+            ))}
           </View>
         )}
       />
@@ -261,7 +298,7 @@ export default function App() {
 const styles = StyleSheet.create({
   loginContainer: { flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 },
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 20 },
-  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 30, textAlign: 'center' },
+  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   form: { width: '100%' },
   formTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   formInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 12 },
@@ -274,18 +311,20 @@ const styles = StyleSheet.create({
   guestBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   switchText: { textAlign: 'center', color: '#4285F4', fontSize: 14, marginTop: 10 },
   error: { color: 'red', textAlign: 'center', marginBottom: 10 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 },
   welcome: { fontSize: 16, color: '#666', marginBottom: 15 },
   signOut: { fontSize: 14, color: '#f44336' },
-  inputRow: { flexDirection: 'row', marginBottom: 20 },
+  inputRow: { flexDirection: 'row', marginBottom: 12 },
   input: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16 },
   addBtn: { backgroundColor: '#4CAF50', padding: 10, borderRadius: 8, marginLeft: 10, justifyContent: 'center' },
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  itemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  categoryBlock: { marginBottom: 16 },
+  categoryTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: '#333' },
+  itemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
   itemLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   checkbox: { fontSize: 20, marginRight: 10 },
   itemText: { fontSize: 16 },
   addedBy: { fontSize: 12, color: '#999' },
   checked: { textDecorationLine: 'line-through', color: '#aaa' },
-  delete: { fontSize: 20 }
+  delete: { fontSize: 20 },
 });
