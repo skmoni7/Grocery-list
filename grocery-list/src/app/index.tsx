@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   Platform,
   Alert,
+  ScrollView,
 } from 'react-native';
 import {
   collection,
@@ -43,6 +44,7 @@ type GroceryItem = {
   checked: boolean;
   addedBy: string;
   category: string;
+  quantity: number;
 };
 
 type Screen = 'login' | 'register';
@@ -54,8 +56,19 @@ const CATEGORY_RULES: { category: string; keywords: string[] }[] = [
   { category: 'Bakery', keywords: ['bread', 'bagel', 'bun', 'muffin', 'croissant', 'cake', 'donut', 'tortilla', 'roll'] },
   { category: 'Frozen', keywords: ['frozen', 'ice cream', 'pizza', 'waffle', 'fries', 'nugget', 'ice'] },
   { category: 'Drinks', keywords: ['water', 'soda', 'juice', 'coffee', 'tea', 'milkshake', 'energy drink', 'sports drink'] },
-  { category: 'Pantry', keywords: ['rice', 'pasta', 'beans', 'cereal', 'flour', 'sugar', 'salt', 'oil', 'sauce', 'spaghetti', 'flour', 'oats'] },
+  { category: 'Pantry', keywords: ['rice', 'pasta', 'beans', 'cereal', 'flour', 'sugar', 'salt', 'oil', 'sauce', 'spaghetti', 'oats'] },
   { category: 'Household', keywords: ['soap', 'paper towel', 'tissue', 'detergent', 'toilet paper', 'trash bag', 'cleaner', 'sponge'] },
+];
+
+const SUGGESTIONS = [
+  'Apples', 'Bananas', 'Oranges', 'Grapes', 'Tomatoes', 'Onions', 'Potatoes', 'Carrots', 'Lettuce', 'Spinach',
+  'Milk', 'Cheddar cheese', 'Yogurt', 'Butter', 'Eggs',
+  'Chicken breast', 'Ground beef', 'Pork chops', 'Bacon',
+  'Bread', 'Burger buns', 'Tortillas',
+  'Frozen pizza', 'Frozen fries', 'Ice cream',
+  'Water', 'Orange juice', 'Soda', 'Coffee', 'Tea',
+  'Rice', 'Pasta', 'Beans', 'Cereal', 'Flour', 'Sugar', 'Salt', 'Olive oil', 'Tomato sauce',
+  'Paper towels', 'Toilet paper', 'Dish soap', 'Laundry detergent',
 ];
 
 function detectCategory(name: string) {
@@ -93,6 +106,7 @@ export default function App() {
           checked: Boolean(d.data().checked),
           addedBy: String(d.data().addedBy ?? ''),
           category: String(d.data().category ?? 'Other'),
+          quantity: Number(d.data().quantity ?? 1),
         }))
       );
     });
@@ -107,6 +121,12 @@ export default function App() {
     }
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
   }, [items]);
+
+  const filteredSuggestions = useMemo(() => {
+    const value = text.trim().toLowerCase();
+    if (!value) return [];
+    return SUGGESTIONS.filter(s => s.toLowerCase().includes(value)).slice(0, 8);
+  }, [text]);
 
   const signInGoogle = async () => {
     try {
@@ -164,20 +184,33 @@ export default function App() {
     await signOut(auth);
   };
 
-  const addItem = async () => {
-    if (!text.trim() || !user) return;
-    const category = detectCategory(text);
+  const addItem = async (nameOverride?: string) => {
+    const value = (nameOverride ?? text).trim();
+    if (!value || !user) return;
+    const category = detectCategory(value);
     await addDoc(collection(db, 'groceries'), {
-      name: text.trim(),
+      name: value,
       checked: false,
       addedBy: user.displayName || user.email || 'Guest',
       category,
+      quantity: 1,
     });
     setText('');
   };
 
+  const handleSuggestionPress = (suggestion: string) => {
+    setText(suggestion);
+    addItem(suggestion);
+  };
+
   const toggleItem = async (item: GroceryItem) => {
     await updateDoc(doc(db, 'groceries', item.id), { checked: !item.checked });
+  };
+
+  const updateQuantity = async (item: GroceryItem, delta: 1 | -1) => {
+    const next = item.quantity + delta;
+    if (next < 1) return;
+    await updateDoc(doc(db, 'groceries', item.id), { quantity: next });
   };
 
   const deleteItem = async (id: string) => {
@@ -260,13 +293,27 @@ export default function App() {
           placeholder="Add an item..."
           value={text}
           onChangeText={setText}
-          onSubmitEditing={addItem}
+          onSubmitEditing={() => addItem()}
           returnKeyType="done"
         />
-        <TouchableOpacity style={styles.addBtn} onPress={addItem}>
+        <TouchableOpacity style={styles.addBtn} onPress={() => addItem()}>
           <Text style={styles.addBtnText}>Add</Text>
         </TouchableOpacity>
       </View>
+
+      {filteredSuggestions.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.suggestionsRow}
+        >
+          {filteredSuggestions.map(s => (
+            <TouchableOpacity key={s} style={styles.suggestionChip} onPress={() => handleSuggestionPress(s)}>
+              <Text style={styles.suggestionText}>{s}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       <FlatList
         data={groupedItems}
@@ -279,13 +326,27 @@ export default function App() {
                 <TouchableOpacity onPress={() => toggleItem(item)} style={styles.itemLeft}>
                   <Text style={styles.checkbox}>{item.checked ? '✅' : '⬜'}</Text>
                   <View>
-                    <Text style={[styles.itemText, item.checked && styles.checked]}>{item.name}</Text>
+                    <Text style={[styles.itemText, item.checked && styles.checked]}>
+                      {item.name} <Text style={styles.quantityText}>× {item.quantity}</Text>
+                    </Text>
                     <Text style={styles.addedBy}>Added by {item.addedBy}</Text>
                   </View>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => deleteItem(item.id)}>
-                  <Text style={styles.delete}>🗑️</Text>
-                </TouchableOpacity>
+
+                <View style={styles.rightControls}>
+                  <View style={styles.qtyControls}>
+                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item, -1)}>
+                      <Text style={styles.qtyBtnText}>-</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.qtyValue}>{item.quantity}</Text>
+                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item, +1)}>
+                      <Text style={styles.qtyBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity onPress={() => deleteItem(item.id)}>
+                    <Text style={styles.delete}>🗑️</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
           </View>
@@ -314,17 +375,42 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 },
   welcome: { fontSize: 16, color: '#666', marginBottom: 15 },
   signOut: { fontSize: 14, color: '#f44336' },
-  inputRow: { flexDirection: 'row', marginBottom: 12 },
+  inputRow: { flexDirection: 'row', marginBottom: 8 },
   input: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16 },
   addBtn: { backgroundColor: '#4CAF50', padding: 10, borderRadius: 8, marginLeft: 10, justifyContent: 'center' },
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  suggestionsRow: { marginBottom: 8 },
+  suggestionChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    marginRight: 8,
+    backgroundColor: '#f7f7f7',
+  },
+  suggestionText: { fontSize: 14, color: '#333' },
   categoryBlock: { marginBottom: 16 },
   categoryTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: '#333' },
   itemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
   itemLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   checkbox: { fontSize: 20, marginRight: 10 },
   itemText: { fontSize: 16 },
+  quantityText: { fontSize: 14, color: '#555' },
   addedBy: { fontSize: 12, color: '#999' },
   checked: { textDecorationLine: 'line-through', color: '#aaa' },
+  rightControls: { alignItems: 'flex-end' },
+  qtyControls: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  qtyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#4CAF50',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyBtnText: { color: '#4CAF50', fontSize: 18, fontWeight: 'bold' },
+  qtyValue: { marginHorizontal: 8, fontSize: 16, minWidth: 18, textAlign: 'center' },
   delete: { fontSize: 20 },
 });
