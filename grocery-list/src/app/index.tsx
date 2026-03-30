@@ -39,8 +39,11 @@ import { db } from '../../firebaseConfig';
 const auth = getAuth();
 const provider = new GoogleAuthProvider();
 
-const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY ?? '';
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_API_KEY   = process.env.EXPO_PUBLIC_GROQ_API_KEY   ?? '';
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '';
+
+const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 type GroceryItem = {
@@ -115,7 +118,6 @@ const SUGGESTIONS = [
   'Diapers','Baby wipes','Baby formula','Dry dog food','Dry cat food','Cat litter',
 ];
 
-// ── Fallback: rule-based category detection ──────────────────────────────────
 function detectCategoryFallback(name: string): string {
   const value = name.toLowerCase().trim();
   for (const rule of CATEGORY_RULES) {
@@ -124,71 +126,100 @@ function detectCategoryFallback(name: string): string {
   return 'Other';
 }
 
-// ── Groq helper ───────────────────────────────────────────────────────────────
-async function groqChat(systemPrompt: string, userMessage: string): Promise<string> {
-  const response = await fetch(GROQ_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      max_tokens: 200,
-      temperature: 0.2,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user',   content: userMessage  },
-      ],
-    }),
-  });
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content?.trim() ?? '';
-}
-
-// ── AI: detect category (falls back to rules if AI fails) ────────────────────
-async function aiDetectCategory(name: string): Promise<string> {
+async function groqDetectCategory(name: string): Promise<string> {
   try {
-    const system = `You are a grocery categorization assistant. Given a grocery item name, respond with ONLY one of these exact category names and nothing else: Fruits, Produce, Dairy, Meat, Bakery, Frozen, Drinks, Pantry, Household, Other.`;
-    const result = await groqChat(system, name);
-    if (CATEGORY_OPTIONS.includes(result)) return result;
-    return detectCategoryFallback(name);
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        max_tokens: 10,
+        temperature: 0.1,
+        messages: [
+          { role: 'system', content: `You are a grocery categorization assistant. Given a grocery item name, respond with ONLY one of these exact category names and nothing else: Fruits, Produce, Dairy, Meat, Bakery, Frozen, Drinks, Pantry, Household, Other.` },
+          { role: 'user',   content: name },
+        ],
+      }),
+    });
+    const data = await res.json();
+    const result = data.choices?.[0]?.message?.content?.trim() ?? '';
+    return CATEGORY_OPTIONS.includes(result) ? result : detectCategoryFallback(name);
   } catch {
     return detectCategoryFallback(name);
   }
 }
 
-// ── AI: get suggestions while typing (falls back to static list) ─────────────
-async function aiGetSuggestions(partial: string): Promise<string[]> {
+async function geminiGetSuggestions(partial: string): Promise<string[]> {
   try {
-    const system = `You are a grocery list assistant. Given a partial grocery item the user is typing, return exactly 6 relevant grocery item suggestions as a JSON array of strings. Only return the JSON array, nothing else, no markdown, no explanation. Example output: ["Apples","Apple juice","Apple cider","Applesauce","Apple cider vinegar","Green apples"]`;
-    const result = await groqChat(system, partial);
-    const cleaned = result.replace(/```json|```/g, '').trim();
+    const res = await fetch(GEMINI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `You are a grocery list assistant. Given a partial grocery item the user is typing, return exactly 6 relevant grocery item suggestions as a JSON array of strings. Only return the JSON array, nothing else, no markdown, no explanation.\n\nPartial input: "${partial}"\n\nExample output: ["Apples","Apple juice","Apple cider","Applesauce","Apple cider vinegar","Green apples"]`,
+          }],
+        }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 200 },
+      }),
+    });
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+    const cleaned = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleaned);
     if (Array.isArray(parsed)) return parsed.slice(0, 8);
-    return [];
+    return groqGetSuggestions(partial);
   } catch {
-    // fallback to static list
-    const value = partial.toLowerCase();
-    return SUGGESTIONS.filter(s => s.toLowerCase().includes(value)).slice(0, 8);
+    return groqGetSuggestions(partial);
   }
+}
+
+async function groqGetSuggestions(partial: string): Promise<string[]> {
+  try {
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        max_tokens: 200,
+        temperature: 0.3,
+        messages: [
+          { role: 'system', content: `You are a grocery list assistant. Given a partial grocery item the user is typing, return exactly 6 relevant grocery item suggestions as a JSON array of strings. Only return the JSON array, nothing else, no markdown, no explanation.` },
+          { role: 'user',   content: partial },
+        ],
+      }),
+    });
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content?.trim() ?? '';
+    const cleaned = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) return parsed.slice(0, 8);
+    return staticSuggestions(partial);
+  } catch {
+    return staticSuggestions(partial);
+  }
+}
+
+function staticSuggestions(partial: string): string[] {
+  const value = partial.toLowerCase();
+  return SUGGESTIONS.filter(s => s.toLowerCase().includes(value)).slice(0, 8);
 }
 
 export default function App() {
-  const [items, setItems]               = useState<GroceryItem[]>([]);
-  const [text, setText]                 = useState('');
-  const [user, setUser]                 = useState<User | null>(null);
-  const [screen, setScreen]             = useState<Screen>('login');
-  const [email, setEmail]               = useState('');
-  const [password, setPassword]         = useState('');
-  const [username, setUsername]         = useState('');
-  const [guestName, setGuestName]       = useState('');
+  const [items, setItems]                   = useState<GroceryItem[]>([]);
+  const [text, setText]                     = useState('');
+  const [user, setUser]                     = useState<User | null>(null);
+  const [screen, setScreen]                 = useState<Screen>('login');
+  const [email, setEmail]                   = useState('');
+  const [password, setPassword]             = useState('');
+  const [username, setUsername]             = useState('');
+  const [guestName, setGuestName]           = useState('');
   const [showGuestInput, setShowGuestInput] = useState(false);
-  const [error, setError]               = useState('');
+  const [error, setError]                   = useState('');
   const [manualCategory, setManualCategory] = useState<string | null>(null);
   const [aiSuggestions, setAiSuggestions]   = useState<string[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const [addingItem, setAddingItem]     = useState(false);
+  const [addingItem, setAddingItem]         = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -214,19 +245,16 @@ export default function App() {
     return unsub;
   }, [user]);
 
-  // AI suggestions with 400 ms debounce as user types
   useEffect(() => {
     const value = text.trim();
     if (!value) { setAiSuggestions([]); return; }
-
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setLoadingSuggestions(true);
-      const suggestions = await aiGetSuggestions(value);
+      const suggestions = await geminiGetSuggestions(value);
       setAiSuggestions(suggestions);
       setLoadingSuggestions(false);
     }, 400);
-
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [text]);
 
@@ -243,7 +271,7 @@ export default function App() {
     try {
       setError('');
       if (Platform.OS !== 'web') {
-        Alert.alert('Google sign-in', 'Google popup login is enabled for web. Use the web app or a native auth flow.');
+        Alert.alert('Google sign-in', 'Google popup login is enabled for web only.');
         return;
       }
       await signInWithPopup(auth, provider);
@@ -284,12 +312,9 @@ export default function App() {
   const addItem = async (nameOverride?: string) => {
     const value = (nameOverride ?? text).trim();
     if (!value || !user || addingItem) return;
-
     setAddingItem(true);
     try {
-      // AI detects category; falls back to rule-based if it fails
-      const category = await aiDetectCategory(value);
-
+      const category = await groqDetectCategory(value);
       await addDoc(collection(db, 'groceries'), {
         name:     value,
         checked:  false,
@@ -297,7 +322,6 @@ export default function App() {
         category,
         quantity: 1,
       });
-
       setText('');
       setManualCategory(null);
       setAiSuggestions([]);
@@ -325,12 +349,10 @@ export default function App() {
     await deleteDoc(doc(db, 'groceries', id));
   };
 
-  // ── Login / Register screens ─────────────────────────────────────────────
   if (!user) {
     return (
       <SafeAreaView style={styles.loginContainer}>
         <Text style={styles.title}>Grocery List</Text>
-
         {screen === 'login' ? (
           <View style={styles.form}>
             <Text style={styles.formTitle}>Sign In</Text>
@@ -380,7 +402,6 @@ export default function App() {
     );
   }
 
-  // ── Main app screen ──────────────────────────────────────────────────────
   const pendingValue    = text.trim();
   const pendingDetected = pendingValue.length > 0 ? detectCategoryFallback(pendingValue) : null;
 
@@ -392,9 +413,7 @@ export default function App() {
           <Text style={styles.signOut}>Sign out</Text>
         </TouchableOpacity>
       </View>
-
       <Text style={styles.welcome}>Hi, {user.displayName || 'Guest'}</Text>
-
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}
@@ -405,19 +424,12 @@ export default function App() {
           returnKeyType="done"
           editable={!addingItem}
         />
-        <TouchableOpacity
-          style={[styles.addBtn, addingItem && styles.addBtnDisabled]}
-          onPress={() => addItem()}
-          disabled={addingItem}
-        >
+        <TouchableOpacity style={[styles.addBtn, addingItem && styles.addBtnDisabled]} onPress={() => addItem()} disabled={addingItem}>
           {addingItem
             ? <ActivityIndicator color="#fff" size="small" />
-            : <Text style={styles.addBtnText}>Add</Text>
-          }
+            : <Text style={styles.addBtnText}>Add</Text>}
         </TouchableOpacity>
       </View>
-
-      {/* Manual category picker — only shown when AI + rules both return Other */}
       {pendingValue && pendingDetected === 'Other' && !loadingSuggestions && (
         <View style={styles.categoryPickerRow}>
           <Text style={styles.categoryPickerLabel}>Choose category:</Text>
@@ -428,16 +440,12 @@ export default function App() {
                 style={[styles.categoryChip, manualCategory === cat && styles.categoryChipActive]}
                 onPress={() => setManualCategory(cat)}
               >
-                <Text style={[styles.categoryChipText, manualCategory === cat && styles.categoryChipTextActive]}>
-                  {cat}
-                </Text>
+                <Text style={[styles.categoryChipText, manualCategory === cat && styles.categoryChipTextActive]}>{cat}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
       )}
-
-      {/* AI suggestions */}
       {(aiSuggestions.length > 0 || loadingSuggestions) && (
         <View style={styles.suggestionsContainer}>
           {loadingSuggestions ? (
@@ -456,7 +464,6 @@ export default function App() {
           )}
         </View>
       )}
-
       <FlatList
         data={groupedItems}
         keyExtractor={([category]) => category}
@@ -469,7 +476,7 @@ export default function App() {
                   <Text style={styles.checkbox}>{item.checked ? '✅' : '⬜'}</Text>
                   <View>
                     <Text style={[styles.itemText, item.checked && styles.checked]}>
-                      {item.name} <Text style={styles.quantityText}>× {item.quantity}</Text>
+                      {item.name} <Text style={styles.quantityText}>x {item.quantity}</Text>
                     </Text>
                     <Text style={styles.addedBy}>Added by {item.addedBy}</Text>
                   </View>
@@ -498,55 +505,55 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  loginContainer:          { flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  container:               { flex: 1, backgroundColor: '#fff', paddingHorizontal: 20 },
-  title:                   { fontSize: 28, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  form:                    { width: '100%' },
-  formTitle:               { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  formInput:               { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 12 },
-  primaryBtn:              { backgroundColor: '#4CAF50', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 12 },
-  primaryBtnText:          { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  orText:                  { textAlign: 'center', color: '#999', marginVertical: 10 },
-  googleBtn:               { backgroundColor: '#4285F4', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 8 },
-  googleBtnText:           { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  guestBtn:                { backgroundColor: '#757575', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 20 },
-  guestBtnText:            { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  switchText:              { textAlign: 'center', color: '#4285F4', fontSize: 14, marginTop: 10 },
-  error:                   { color: 'red', textAlign: 'center', marginBottom: 10 },
-  header:                  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 },
-  welcome:                 { fontSize: 16, color: '#666', marginBottom: 15 },
-  signOut:                 { fontSize: 14, color: '#f44336' },
-  inputRow:                { flexDirection: 'row', marginBottom: 6 },
-  input:                   { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16 },
-  addBtn:                  { backgroundColor: '#4CAF50', padding: 10, borderRadius: 8, marginLeft: 10, justifyContent: 'center', minWidth: 56, alignItems: 'center' },
-  addBtnDisabled:          { backgroundColor: '#a5d6a7' },
-  addBtnText:              { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  categoryPickerRow:       { marginBottom: 6 },
-  categoryPickerLabel:     { fontSize: 13, color: '#666', marginBottom: 4 },
-  categoryPickerScroll:    { flexGrow: 0 },
-  categoryChip:            { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#ccc', marginRight: 8, backgroundColor: '#f7f7f7' },
-  categoryChipActive:      { backgroundColor: '#4CAF50', borderColor: '#4CAF50' },
-  categoryChipText:        { fontSize: 13, color: '#333' },
-  categoryChipTextActive:  { color: '#fff', fontWeight: 'bold' },
-  suggestionsContainer:    { marginBottom: 8, minHeight: 38 },
-  suggestionsLoading:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
-  suggestionsLoadingText:  { marginLeft: 8, fontSize: 13, color: '#888', fontStyle: 'italic' },
-  suggestionsRow:          { flexGrow: 0 },
-  suggestionChip:          { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#4CAF50', marginRight: 8, backgroundColor: '#f1f8f1' },
-  suggestionText:          { fontSize: 14, color: '#2e7d32' },
-  categoryBlock:           { marginBottom: 16 },
-  categoryTitle:           { fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: '#333' },
-  itemRow:                 { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  itemLeft:                { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  checkbox:                { fontSize: 20, marginRight: 10 },
-  itemText:                { fontSize: 16 },
-  quantityText:            { fontSize: 14, color: '#555' },
-  addedBy:                 { fontSize: 12, color: '#999' },
-  checked:                 { textDecorationLine: 'line-through', color: '#aaa' },
-  rightControls:           { alignItems: 'flex-end' },
-  qtyControls:             { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  qtyBtn:                  { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#4CAF50', alignItems: 'center', justifyContent: 'center' },
-  qtyBtnText:              { color: '#4CAF50', fontSize: 18, fontWeight: 'bold' },
-  qtyValue:                { marginHorizontal: 8, fontSize: 16, minWidth: 18, textAlign: 'center' },
-  delete:                  { fontSize: 20 },
+  loginContainer:         { flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  container:              { flex: 1, backgroundColor: '#fff', paddingHorizontal: 20 },
+  title:                  { fontSize: 28, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  form:                   { width: '100%' },
+  formTitle:              { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  formInput:              { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 12 },
+  primaryBtn:             { backgroundColor: '#4CAF50', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 12 },
+  primaryBtnText:         { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  orText:                 { textAlign: 'center', color: '#999', marginVertical: 10 },
+  googleBtn:              { backgroundColor: '#4285F4', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 8 },
+  googleBtnText:          { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  guestBtn:               { backgroundColor: '#757575', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 20 },
+  guestBtnText:           { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  switchText:             { textAlign: 'center', color: '#4285F4', fontSize: 14, marginTop: 10 },
+  error:                  { color: 'red', textAlign: 'center', marginBottom: 10 },
+  header:                 { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 },
+  welcome:                { fontSize: 16, color: '#666', marginBottom: 15 },
+  signOut:                { fontSize: 14, color: '#f44336' },
+  inputRow:               { flexDirection: 'row', marginBottom: 6 },
+  input:                  { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16 },
+  addBtn:                 { backgroundColor: '#4CAF50', padding: 10, borderRadius: 8, marginLeft: 10, justifyContent: 'center', minWidth: 56, alignItems: 'center' },
+  addBtnDisabled:         { backgroundColor: '#a5d6a7' },
+  addBtnText:             { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  categoryPickerRow:      { marginBottom: 6 },
+  categoryPickerLabel:    { fontSize: 13, color: '#666', marginBottom: 4 },
+  categoryPickerScroll:   { flexGrow: 0 },
+  categoryChip:           { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#ccc', marginRight: 8, backgroundColor: '#f7f7f7' },
+  categoryChipActive:     { backgroundColor: '#4CAF50', borderColor: '#4CAF50' },
+  categoryChipText:       { fontSize: 13, color: '#333' },
+  categoryChipTextActive: { color: '#fff', fontWeight: 'bold' },
+  suggestionsContainer:   { marginBottom: 8, minHeight: 38 },
+  suggestionsLoading:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+  suggestionsLoadingText: { marginLeft: 8, fontSize: 13, color: '#888', fontStyle: 'italic' },
+  suggestionsRow:         { flexGrow: 0 },
+  suggestionChip:         { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#4CAF50', marginRight: 8, backgroundColor: '#f1f8f1' },
+  suggestionText:         { fontSize: 14, color: '#2e7d32' },
+  categoryBlock:          { marginBottom: 16 },
+  categoryTitle:          { fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: '#333' },
+  itemRow:                { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  itemLeft:               { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  checkbox:               { fontSize: 20, marginRight: 10 },
+  itemText:               { fontSize: 16 },
+  quantityText:           { fontSize: 14, color: '#555' },
+  addedBy:                { fontSize: 12, color: '#999' },
+  checked:                { textDecorationLine: 'line-through', color: '#aaa' },
+  rightControls:          { alignItems: 'flex-end' },
+  qtyControls:            { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  qtyBtn:                 { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#4CAF50', alignItems: 'center', justifyContent: 'center' },
+  qtyBtnText:             { color: '#4CAF50', fontSize: 18, fontWeight: 'bold' },
+  qtyValue:               { marginHorizontal: 8, fontSize: 16, minWidth: 18, textAlign: 'center' },
+  delete:                 { fontSize: 20 },
 });
