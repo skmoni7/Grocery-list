@@ -49,8 +49,93 @@ type GroceryItem = {
 
 type Screen = 'login' | 'register';
 
+const CATEGORY_OPTIONS = [
+  'Fruits',
+  'Produce',
+  'Dairy',
+  'Meat',
+  'Bakery',
+  'Frozen',
+  'Drinks',
+  'Pantry',
+  'Household',
+  'Other',
+];
+
 const CATEGORY_RULES: { category: string; keywords: string[] }[] = [
-  { category: 'Produce', keywords: ['apple', 'banana', 'orange', 'grape', 'spinach', 'lettuce', 'tomato', 'onion', 'potato', 'carrot', 'pepper', 'broccoli', 'cucumber', 'lime', 'lemon'] },
+  // Fruits
+  {
+    category: 'Fruits',
+    keywords: [
+      'apple',
+      'banana',
+      'orange',
+      'grape',
+      'strawberry',
+      'strawberries',
+      'blueberry',
+      'blueberries',
+      'raspberry',
+      'raspberries',
+      'blackberry',
+      'blackberries',
+      'kiwi',
+      'mango',
+      'pineapple',
+      'pear',
+      'peach',
+      'plum',
+      'watermelon',
+      'cantaloupe',
+      'honeydew',
+      'cherry',
+      'cherries',
+      'lemon',
+      'lime',
+      'grapefruit',
+      'pomegranate',
+      'apricot',
+      'nectarine',
+    ],
+  },
+
+  // Produce (veg & greens)
+  {
+    category: 'Produce',
+    keywords: [
+      'tomato',
+      'tomatoes',
+      'onion',
+      'onions',
+      'garlic',
+      'potato',
+      'potatoes',
+      'sweet potato',
+      'sweet potatoes',
+      'carrot',
+      'carrots',
+      'celery',
+      'pepper',
+      'bell pepper',
+      'bell peppers',
+      'cucumber',
+      'cucumbers',
+      'broccoli',
+      'cauliflower',
+      'spinach',
+      'lettuce',
+      'romaine',
+      'kale',
+      'zucchini',
+      'squash',
+      'green bean',
+      'green beans',
+      'herbs',
+      'cilantro',
+      'parsley',
+    ],
+  },
+
   { category: 'Dairy', keywords: ['milk', 'cheese', 'yogurt', 'butter', 'cream', 'egg', 'eggs', 'sour cream', 'cottage cheese'] },
   { category: 'Meat', keywords: ['chicken', 'beef', 'pork', 'turkey', 'fish', 'salmon', 'shrimp', 'bacon', 'ham', 'steak', 'sausage'] },
   { category: 'Bakery', keywords: ['bread', 'bagel', 'bun', 'muffin', 'croissant', 'cake', 'donut', 'tortilla', 'roll'] },
@@ -61,14 +146,229 @@ const CATEGORY_RULES: { category: string; keywords: string[] }[] = [
 ];
 
 const SUGGESTIONS = [
-  'Apples', 'Bananas', 'Oranges', 'Grapes', 'Tomatoes', 'Onions', 'Potatoes', 'Carrots', 'Lettuce', 'Spinach',
-  'Milk', 'Cheddar cheese', 'Yogurt', 'Butter', 'Eggs',
-  'Chicken breast', 'Ground beef', 'Pork chops', 'Bacon',
-  'Bread', 'Burger buns', 'Tortillas',
-  'Frozen pizza', 'Frozen fries', 'Ice cream',
-  'Water', 'Orange juice', 'Soda', 'Coffee', 'Tea',
-  'Rice', 'Pasta', 'Beans', 'Cereal', 'Flour', 'Sugar', 'Salt', 'Olive oil', 'Tomato sauce',
-  'Paper towels', 'Toilet paper', 'Dish soap', 'Laundry detergent',
+  // Fruits
+  'Apples',
+  'Bananas',
+  'Oranges',
+  'Grapes',
+  'Strawberries',
+  'Blueberries',
+  'Raspberries',
+  'Blackberries',
+  'Kiwis',
+  'Mangoes',
+  'Pineapple',
+  'Pears',
+  'Peaches',
+  'Plums',
+  'Cherries',
+  'Watermelon',
+  'Cantaloupe',
+  'Honeydew melon',
+  'Grapefruit',
+  'Pomegranate',
+  'Lemons',
+  'Limes',
+
+  // Vegetables & greens (Produce)
+  'Roma tomatoes',
+  'Grape tomatoes',
+  'Onions',
+  'Red onions',
+  'Garlic',
+  'Potatoes',
+  'Sweet potatoes',
+  'Carrots',
+  'Celery',
+  'Bell peppers',
+  'Cucumbers',
+  'Broccoli',
+  'Cauliflower',
+  'Spinach',
+  'Mixed salad',
+  'Romaine lettuce',
+  'Iceberg lettuce',
+  'Avocados',
+  'Mushrooms',
+  'Zucchini',
+
+  // Meat & Seafood
+  'Chicken breast',
+  'Chicken thighs',
+  'Whole chicken',
+  'Ground beef',
+  'Beef stew meat',
+  'Pork chops',
+  'Pork shoulder',
+  'Ground turkey',
+  'Bacon',
+  'Ham',
+  'Sausage links',
+  'Hot dogs',
+  'Tilapia fillets',
+  'Salmon fillets',
+  'Frozen shrimp',
+
+  // Dairy & Eggs
+  'Whole milk',
+  '2% milk',
+  'Almond milk',
+  'Oat milk',
+  'Greek yogurt',
+  'Plain yogurt',
+  'Sliced cheese',
+  'Shredded cheese',
+  'Block cheddar cheese',
+  'Mozzarella cheese',
+  'Butter',
+  'Whipping cream',
+  'Eggs',
+  'Cottage cheese',
+  'Cream cheese',
+  'Sour cream',
+
+  // Snacks & Candy
+  'Potato chips',
+  'Tortilla chips',
+  'Pretzels',
+  'Popcorn',
+  'Crackers',
+  'Granola bars',
+  'Fruit snacks',
+  'Chocolate bar',
+  'Gummy candy',
+  'Trail mix',
+
+  // Frozen Foods
+  'Frozen pizza',
+  'Frozen french fries',
+  'Frozen vegetables',
+  'Frozen fruit',
+  'Frozen waffles',
+  'Frozen pancakes',
+  'Ice cream',
+  'Frozen chicken nuggets',
+  'Frozen fish sticks',
+
+  // Bakery & Bread
+  'White bread',
+  'Whole wheat bread',
+  'Multigrain bread',
+  'Burger buns',
+  'Hot dog buns',
+  'Tortillas',
+  'Bagels',
+  'English muffins',
+  'Dinner rolls',
+  'Croissants',
+
+  // Pantry Essentials
+  'Spaghetti',
+  'Penne pasta',
+  'Rice',
+  'Brown rice',
+  'Quinoa',
+  'Black beans',
+  'Kidney beans',
+  'Chickpeas',
+  'Canned corn',
+  'Canned tomatoes',
+  'Tomato sauce',
+  'Pasta sauce',
+  'Canned tuna',
+  'Peanut butter',
+  'Jelly',
+  'Flour',
+  'Sugar',
+  'Brown sugar',
+  'Powdered sugar',
+  'Baking powder',
+  'Baking soda',
+  'Salt',
+  'Black pepper',
+  'Olive oil',
+  'Vegetable oil',
+  'Vinegar',
+  'Chicken broth',
+  'Beef broth',
+  'Bouillon cubes',
+
+  // Beverages
+  'Bottled water',
+  'Sparkling water',
+  'Orange juice',
+  'Apple juice',
+  'Lemonade',
+  'Soda',
+  'Iced tea',
+  'Coffee',
+  'Ground coffee',
+  'Coffee pods',
+  'Tea bags',
+  'Sports drink',
+
+  // Breakfast & Cereals
+  'Corn flakes',
+  'Oat cereal',
+  'Granola cereal',
+  'Instant oatmeal',
+  'Old fashioned oats',
+  'Maple syrup',
+  'Pancake mix',
+
+  // Deli & Prepared
+  'Sliced turkey',
+  'Sliced ham',
+  'Sliced salami',
+  'Cheese slices',
+  'Hummus',
+  'Premade salad',
+  'Premade pasta salad',
+
+  // Household Essentials
+  'Paper towels',
+  'Toilet paper',
+  'Facial tissue',
+  'Trash bags',
+  'Dish soap',
+  'Dishwasher tablets',
+  'Laundry detergent',
+  'Fabric softener',
+  'Glass cleaner',
+  'All-purpose cleaner',
+  'Sponges',
+  'Aluminum foil',
+  'Plastic wrap',
+  'Sandwich bags',
+  'Freezer bags',
+
+  // Personal Care
+  'Shampoo',
+  'Conditioner',
+  'Body wash',
+  'Bar soap',
+  'Toothpaste',
+  'Toothbrush',
+  'Deodorant',
+  'Razor blades',
+  'Hand soap',
+  'Lotion',
+
+  // Baby Items
+  'Diapers',
+  'Baby wipes',
+  'Baby formula',
+  'Baby snacks',
+  'Baby shampoo',
+
+  // Pet Supplies
+  'Dry dog food',
+  'Wet dog food',
+  'Dry cat food',
+  'Wet cat food',
+  'Cat litter',
+  'Dog treats',
+  'Cat treats',
 ];
 
 function detectCategory(name: string) {
@@ -90,6 +390,7 @@ export default function App() {
   const [guestName, setGuestName] = useState('');
   const [showGuestInput, setShowGuestInput] = useState(false);
   const [error, setError] = useState('');
+  const [manualCategory, setManualCategory] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, u => setUser(u));
@@ -187,15 +488,21 @@ export default function App() {
   const addItem = async (nameOverride?: string) => {
     const value = (nameOverride ?? text).trim();
     if (!value || !user) return;
-    const category = detectCategory(value);
+
+    const detected = detectCategory(value);
+    const finalCategory =
+      detected === 'Other' && manualCategory ? manualCategory : detected;
+
     await addDoc(collection(db, 'groceries'), {
       name: value,
       checked: false,
       addedBy: user.displayName || user.email || 'Guest',
-      category,
+      category: finalCategory,
       quantity: 1,
     });
+
     setText('');
+    setManualCategory(null);
   };
 
   const handleSuggestionPress = (suggestion: string) => {
@@ -226,8 +533,21 @@ export default function App() {
           <View style={styles.form}>
             <Text style={styles.formTitle}>Sign In</Text>
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <TextInput style={styles.formInput} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-            <TextInput style={styles.formInput} placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry />
+            <TextInput
+              style={styles.formInput}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <TextInput
+              style={styles.formInput}
+              placeholder="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
             <TouchableOpacity style={styles.primaryBtn} onPress={signInEmail}>
               <Text style={styles.primaryBtnText}>Sign In</Text>
             </TouchableOpacity>
@@ -241,19 +561,32 @@ export default function App() {
             <Text style={styles.orText}>— or —</Text>
 
             {!showGuestInput ? (
-              <TouchableOpacity style={styles.guestBtn} onPress={() => setShowGuestInput(true)}>
+              <TouchableOpacity
+                style={styles.guestBtn}
+                onPress={() => setShowGuestInput(true)}
+              >
                 <Text style={styles.guestBtnText}>Continue as Guest</Text>
               </TouchableOpacity>
             ) : (
               <View>
-                <TextInput style={styles.formInput} placeholder="Enter your name" value={guestName} onChangeText={setGuestName} />
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="Enter your name"
+                  value={guestName}
+                  onChangeText={setGuestName}
+                />
                 <TouchableOpacity style={styles.guestBtn} onPress={signInGuest}>
                   <Text style={styles.guestBtnText}>Join as Guest</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            <TouchableOpacity onPress={() => { setScreen('register'); setError(''); }}>
+            <TouchableOpacity
+              onPress={() => {
+                setScreen('register');
+                setError('');
+              }}
+            >
               <Text style={styles.switchText}>No account? Create one</Text>
             </TouchableOpacity>
           </View>
@@ -261,20 +594,49 @@ export default function App() {
           <View style={styles.form}>
             <Text style={styles.formTitle}>Create Account</Text>
             {error ? <Text style={styles.error}>{error}</Text> : null}
-            <TextInput style={styles.formInput} placeholder="Username" value={username} onChangeText={setUsername} />
-            <TextInput style={styles.formInput} placeholder="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-            <TextInput style={styles.formInput} placeholder="Password (6+ characters)" value={password} onChangeText={setPassword} secureTextEntry />
+            <TextInput
+              style={styles.formInput}
+              placeholder="Username"
+              value={username}
+              onChangeText={setUsername}
+            />
+            <TextInput
+              style={styles.formInput}
+              placeholder="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <TextInput
+              style={styles.formInput}
+              placeholder="Password (6+ characters)"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
             <TouchableOpacity style={styles.primaryBtn} onPress={registerUser}>
               <Text style={styles.primaryBtnText}>Create Account</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { setScreen('login'); setError(''); }}>
-              <Text style={styles.switchText}>Already have an account? Sign in</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setScreen('login');
+                setError('');
+              }}
+            >
+              <Text style={styles.switchText}>
+                Already have an account? Sign in
+              </Text>
             </TouchableOpacity>
           </View>
         )}
       </SafeAreaView>
     );
   }
+
+  const pendingValue = text.trim();
+  const pendingDetected =
+    pendingValue.length > 0 ? detectCategory(pendingValue) : null;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -301,6 +663,37 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
+      {pendingValue && pendingDetected === 'Other' && (
+        <View style={styles.categoryPickerRow}>
+          <Text style={styles.categoryPickerLabel}>Choose category:</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.categoryPickerScroll}
+          >
+            {CATEGORY_OPTIONS.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.categoryChip,
+                  manualCategory === cat && styles.categoryChipActive,
+                ]}
+                onPress={() => setManualCategory(cat)}
+              >
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    manualCategory === cat && styles.categoryChipTextActive,
+                  ]}
+                >
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {filteredSuggestions.length > 0 && (
         <ScrollView
           horizontal
@@ -308,7 +701,11 @@ export default function App() {
           style={styles.suggestionsRow}
         >
           {filteredSuggestions.map(s => (
-            <TouchableOpacity key={s} style={styles.suggestionChip} onPress={() => handleSuggestionPress(s)}>
+            <TouchableOpacity
+              key={s}
+              style={styles.suggestionChip}
+              onPress={() => handleSuggestionPress(s)}
+            >
               <Text style={styles.suggestionText}>{s}</Text>
             </TouchableOpacity>
           ))}
@@ -323,23 +720,39 @@ export default function App() {
             <Text style={styles.categoryTitle}>{category}</Text>
             {categoryItems.map(item => (
               <View key={item.id} style={styles.itemRow}>
-                <TouchableOpacity onPress={() => toggleItem(item)} style={styles.itemLeft}>
-                  <Text style={styles.checkbox}>{item.checked ? '✅' : '⬜'}</Text>
+                <TouchableOpacity
+                  onPress={() => toggleItem(item)}
+                  style={styles.itemLeft}
+                >
+                  <Text style={styles.checkbox}>
+                    {item.checked ? '✅' : '⬜'}
+                  </Text>
                   <View>
-                    <Text style={[styles.itemText, item.checked && styles.checked]}>
-                      {item.name} <Text style={styles.quantityText}>× {item.quantity}</Text>
+                    <Text
+                      style={[styles.itemText, item.checked && styles.checked]}
+                    >
+                      {item.name}{' '}
+                      <Text style={styles.quantityText}>× {item.quantity}</Text>
                     </Text>
-                    <Text style={styles.addedBy}>Added by {item.addedBy}</Text>
+                    <Text style={styles.addedBy}>
+                      Added by {item.addedBy}
+                    </Text>
                   </View>
                 </TouchableOpacity>
 
                 <View style={styles.rightControls}>
                   <View style={styles.qtyControls}>
-                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item, -1)}>
+                    <TouchableOpacity
+                      style={styles.qtyBtn}
+                      onPress={() => updateQuantity(item, -1)}
+                    >
                       <Text style={styles.qtyBtnText}>-</Text>
                     </TouchableOpacity>
                     <Text style={styles.qtyValue}>{item.quantity}</Text>
-                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item, +1)}>
+                    <TouchableOpacity
+                      style={styles.qtyBtn}
+                      onPress={() => updateQuantity(item, +1)}
+                    >
                       <Text style={styles.qtyBtnText}>+</Text>
                     </TouchableOpacity>
                   </View>
@@ -357,28 +770,103 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  loginContainer: { flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  loginContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
   container: { flex: 1, backgroundColor: '#fff', paddingHorizontal: 20 },
-  title: { fontSize: 28, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
   form: { width: '100%' },
-  formTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  formInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 12 },
-  primaryBtn: { backgroundColor: '#4CAF50', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 12 },
+  formTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  primaryBtn: {
+    backgroundColor: '#4CAF50',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   primaryBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   orText: { textAlign: 'center', color: '#999', marginVertical: 10 },
-  googleBtn: { backgroundColor: '#4285F4', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 8 },
+  googleBtn: {
+    backgroundColor: '#4285F4',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   googleBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  guestBtn: { backgroundColor: '#757575', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 20 },
+  guestBtn: {
+    backgroundColor: '#757575',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
   guestBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   switchText: { textAlign: 'center', color: '#4285F4', fontSize: 14, marginTop: 10 },
   error: { color: 'red', textAlign: 'center', marginBottom: 10 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 10,
+  },
   welcome: { fontSize: 16, color: '#666', marginBottom: 15 },
   signOut: { fontSize: 14, color: '#f44336' },
-  inputRow: { flexDirection: 'row', marginBottom: 8 },
-  input: { flex: 1, borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16 },
-  addBtn: { backgroundColor: '#4CAF50', padding: 10, borderRadius: 8, marginLeft: 10, justifyContent: 'center' },
+  inputRow: { flexDirection: 'row', marginBottom: 6 },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 16,
+  },
+  addBtn: {
+    backgroundColor: '#4CAF50',
+    padding: 10,
+    borderRadius: 8,
+    marginLeft: 10,
+    justifyContent: 'center',
+  },
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  categoryPickerRow: { marginBottom: 6 },
+  categoryPickerLabel: { fontSize: 13, color: '#666', marginBottom: 4 },
+  categoryPickerScroll: { flexGrow: 0 },
+  categoryChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    marginRight: 8,
+    backgroundColor: '#f7f7f7',
+  },
+  categoryChipActive: { backgroundColor: '#4CAF50', borderColor: '#4CAF50' },
+  categoryChipText: { fontSize: 13, color: '#333' },
+  categoryChipTextActive: { color: '#fff', fontWeight: 'bold' },
   suggestionsRow: { marginBottom: 8 },
   suggestionChip: {
     paddingHorizontal: 10,
@@ -392,7 +880,14 @@ const styles = StyleSheet.create({
   suggestionText: { fontSize: 14, color: '#333' },
   categoryBlock: { marginBottom: 16 },
   categoryTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: '#333' },
-  itemRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
   itemLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   checkbox: { fontSize: 20, marginRight: 10 },
   itemText: { fontSize: 16 },
